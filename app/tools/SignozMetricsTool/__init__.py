@@ -33,12 +33,12 @@ def _metrics_extract_params(sources: dict[str, dict]) -> dict[str, Any]:
     tags=("metrics", "observability"),
     cost_tier="moderate",
     description=(
-        "Query SigNoz metrics (CPU, memory, error rate, latency, request rate) "
+        "Query SigNoz metrics (CPU, memory, request rate) "
         "by service and time window."
     ),
     use_cases=[
         "Checking CPU and memory usage from SigNoz metrics",
-        "Reviewing error rate and latency percentiles",
+        "Reviewing request throughput by service",
         "Correlating metric anomalies with SigNoz alerts",
     ],
     requires=["metric_name"],
@@ -48,8 +48,9 @@ def _metrics_extract_params(sources: dict[str, dict]) -> dict[str, Any]:
             "metric_name": {
                 "type": "string",
                 "description": (
-                    "Metric name: cpu_usage, memory_usage, error_rate, "
-                    "request_rate, or a raw metric name"
+                    "Metric name: cpu_usage, memory_usage, request_rate, "
+                    "or a raw metric name. For error-rate semantics use "
+                    "query_signoz_traces instead."
                 ),
             },
             "service": {"type": "string", "description": "Service name filter"},

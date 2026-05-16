@@ -23,7 +23,9 @@ DEFAULT_TIME_RANGE_MINUTES = 60
 _CURATED_METRICS: dict[str, str] = {
     "cpu_usage": "system_cpu_usage",
     "memory_usage": "system_memory_usage",
-    "error_rate": "signoz_calls_total",
+    # NOTE: error_rate is intentionally omitted — signoz_calls_total counts all
+    # requests regardless of status.  Use a raw metric name with a label filter
+    # or query signoz_traces directly for error-rate semantics.
     "request_rate": "signoz_calls_total",
 }
 

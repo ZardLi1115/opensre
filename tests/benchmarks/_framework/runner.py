@@ -24,6 +24,39 @@ def _case_seen_shape(case: BenchmarkCase) -> bool:
     return bool(raw) if raw is not None else False
 
 
+def _path_component(value: str) -> str:
+    sanitized = "".join(char if char.isalnum() or char in "._-+=" else "_" for char in value)
+    return sanitized or "default"
+
+
+def _failed_result(
+    adapter: BenchmarkAdapter,
+    case: BenchmarkCase,
+    *,
+    mode: str,
+    llm: str,
+    run_index: int,
+    started: float,
+    exc: Exception,
+) -> dict[str, Any]:
+    return {
+        "benchmark": adapter.name,
+        "adapter_version": adapter.version,
+        "mode": mode,
+        "llm": llm,
+        "run_index": run_index,
+        "case_id": case.case_id,
+        "seen_shape": _case_seen_shape(case),
+        "duration_seconds": time.perf_counter() - started,
+        "cost_usd": 0.0,
+        "cost_breakdown_usd": {},
+        "decision_trace": [],
+        "run": {},
+        "score": {"case_id": case.case_id, "metrics": {}, "error": str(exc)},
+        "error": str(exc),
+    }
+
+
 def _run_one(
     adapter: BenchmarkAdapter,
     case: BenchmarkCase,
@@ -34,9 +67,27 @@ def _run_one(
     output_dir: Path,
 ) -> dict[str, Any]:
     started = time.perf_counter()
-    case_output = output_dir / "cases" / mode / llm / case.case_id / f"run-{run_index}"
-    run_payload = adapter.run_case(case, str(case_output))
-    score = adapter.score_case(case, run_payload)
+    case_output = (
+        output_dir
+        / "cases"
+        / _path_component(mode)
+        / _path_component(llm)
+        / _path_component(case.case_id)
+        / f"run-{run_index}"
+    )
+    try:
+        run_payload = adapter.run_case(case, str(case_output))
+        score = adapter.score_case(case, run_payload)
+    except Exception as exc:
+        return _failed_result(
+            adapter,
+            case,
+            mode=mode,
+            llm=llm,
+            run_index=run_index,
+            started=started,
+            exc=exc,
+        )
     final_state = run_payload.get("run", {}).get("final_state", {})
     tokens_by_model = tokens_by_model_from_state(
         final_state if isinstance(final_state, dict) else {}

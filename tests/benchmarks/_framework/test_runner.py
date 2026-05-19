@@ -47,6 +47,22 @@ class TwoCaseAdapter(FakeAdapter):
         return super().run_case(case, output_dir)
 
 
+class OutputPathAdapter(FakeAdapter):
+    def __init__(self) -> None:
+        self.output_dirs: list[str] = []
+
+    def run_case(self, case: BenchmarkCase, output_dir: str) -> dict[str, Any]:
+        self.output_dirs.append(output_dir)
+        return super().run_case(case, output_dir)
+
+
+class FailingSecondCaseAdapter(TwoCaseAdapter):
+    def run_case(self, case: BenchmarkCase, output_dir: str) -> dict[str, Any]:
+        if case.case_id == "case-2":
+            raise RuntimeError("case exploded")
+        return super().run_case(case, output_dir)
+
+
 def test_run_benchmark_writes_reports_and_cost(tmp_path) -> None:
     result = run_benchmark(
         FakeAdapter(),
@@ -114,3 +130,39 @@ def test_run_benchmark_records_opensre_mode(tmp_path) -> None:
 
     assert result.payload["modes"] == ["opensre+llm"]
     assert [row["mode"] for row in result.payload["results"]] == ["opensre+llm"]
+
+
+def test_run_benchmark_sanitizes_llm_output_path(tmp_path) -> None:
+    adapter = OutputPathAdapter()
+
+    run_benchmark(
+        adapter,
+        BenchmarkConfig(
+            benchmark="fake",
+            llms=("openai:gpt-4o/latest",),
+            output_dir=str(tmp_path),
+            workers=1,
+        ),
+    )
+
+    assert adapter.output_dirs
+    assert "openai_gpt-4o_latest" in adapter.output_dirs[0]
+
+
+def test_run_benchmark_records_case_failures_and_writes_summary(tmp_path) -> None:
+    result = run_benchmark(
+        FailingSecondCaseAdapter(),
+        BenchmarkConfig(
+            benchmark="fake",
+            llms=("gpt-5",),
+            output_dir=str(tmp_path),
+            workers=2,
+            strict_parity=True,
+        ),
+    )
+
+    failed = [row for row in result.payload["results"] if row.get("error")]
+    assert len(result.payload["results"]) == 2
+    assert len(failed) == 1
+    assert failed[0]["case_id"] == "case-2"
+    assert (tmp_path / "summary.json").is_file()

@@ -145,19 +145,66 @@ def _read_summary(run_dir: str) -> dict[str, Any]:
 
 
 def _compare_payloads(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]:
+    left_metrics = _metric_summary(left)
+    right_metrics = _metric_summary(right)
     return {
         "left": {
             "benchmark": left.get("benchmark"),
             "runs": len(left.get("results", [])),
             "cost_usd": left.get("cost_usd", 0.0),
+            "metrics": left_metrics,
         },
         "right": {
             "benchmark": right.get("benchmark"),
             "runs": len(right.get("results", [])),
             "cost_usd": right.get("cost_usd", 0.0),
+            "metrics": right_metrics,
         },
         "delta": {
             "runs": len(right.get("results", [])) - len(left.get("results", [])),
             "cost_usd": float(right.get("cost_usd", 0.0)) - float(left.get("cost_usd", 0.0)),
+            "metrics": _metric_delta(left_metrics, right_metrics),
         },
     }
+
+
+def _metric_summary(payload: dict[str, Any]) -> dict[str, dict[str, float]]:
+    values: dict[str, dict[str, list[float]]] = {}
+    for result in payload.get("results", []):
+        if not isinstance(result, dict):
+            continue
+        score = result.get("score")
+        if not isinstance(score, dict):
+            continue
+        metrics = score.get("metrics")
+        if not isinstance(metrics, dict):
+            continue
+        key = f"{result.get('mode', '')}/{result.get('llm', '')}"
+        for name, raw_value in metrics.items():
+            if isinstance(raw_value, bool) or not isinstance(raw_value, (int, float)):
+                continue
+            values.setdefault(key, {}).setdefault(str(name), []).append(float(raw_value))
+
+    return {
+        key: {
+            metric_name: sum(metric_values) / len(metric_values)
+            for metric_name, metric_values in sorted(metrics.items())
+            if metric_values
+        }
+        for key, metrics in sorted(values.items())
+    }
+
+
+def _metric_delta(
+    left: dict[str, dict[str, float]], right: dict[str, dict[str, float]]
+) -> dict[str, dict[str, float]]:
+    delta: dict[str, dict[str, float]] = {}
+    for key in sorted(set(left) | set(right)):
+        metric_names = set(left.get(key, {})) | set(right.get(key, {}))
+        metric_delta = {
+            name: right.get(key, {}).get(name, 0.0) - left.get(key, {}).get(name, 0.0)
+            for name in sorted(metric_names)
+        }
+        if metric_delta:
+            delta[key] = metric_delta
+    return delta
